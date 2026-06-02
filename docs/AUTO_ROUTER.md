@@ -68,8 +68,21 @@ RESULT: PASS
 Row 4: even though the cheap model *scored* 0.90, the task has an image, so the
 shim hard-zeroes the models that can't see and the only vision-capable candidate
 wins. Row 5 shows the per-task cache: the repeat is served without re-calling the
-classifier. The routing logic is also locked down by the offline test suite
-(`python3 -m pytest tests/test_router.py`).
+classifier.
+
+The behavior is locked down by 48 offline tests:
+
+```bash
+python3 -m pytest tests/test_router.py tests/test_router_integration.py -q
+```
+
+They cover config loading, task-signal extraction, score parsing (prose, code
+fences, partial scores), cheapest-among-viable selection, image hard-rejects,
+the per-task cache across an agent tool-loop, OpenAI **and** Anthropic
+classifiers, streaming, compaction, the chat-completions endpoint, the exact
+HTTP payload/headers the shim sends to the classifier, threshold tuning,
+graceful fallback on garbage classifier output, candidate availability gating,
+concurrency, and the picker switch.
 
 ---
 

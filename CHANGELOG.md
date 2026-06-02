@@ -20,7 +20,11 @@ and this project does not yet follow semantic versioning (pre-1.0).
   `CODEX_SHIM_DISABLE_ROUTER`, `CODEX_SHIM_ROUTER_TIMEOUT`,
   `CODEX_SHIM_ROUTER_MAX_TOKENS`, `CODEX_SHIM_ROUTER_LOG`. Documented in
   `docs/AUTO_ROUTER.md` with a runnable offline proof at
-  `examples/auto_router_demo.py`.
+  `examples/auto_router_demo.py` and 48 offline tests
+  (`tests/test_router.py`, `tests/test_router_integration.py`) covering
+  scoring/selection, streaming, compaction, the chat endpoint, the agent
+  tool-loop cache, OpenAI/Anthropic classifiers, the exact classifier HTTP,
+  fallbacks, availability gating, and concurrency.
 - Cursor/Composer subscription passthrough for slug `composer-2-5`. When
   `cursor-agent login` is active, the shim spawns `cursor-agent --print` with
   CLI OAuth (no Dashboard API key). The slug is auth-gated in `/health`,

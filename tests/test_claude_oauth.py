@@ -16,9 +16,13 @@ from codex_shim.settings import ModelSettings, byok_model_has_credentials
 
 @pytest.fixture(autouse=True)
 def isolate_oauth_env(monkeypatch, tmp_path):
-    """Force every test onto a tmp credentials file with no env token."""
+    """Force every test onto a tmp credentials file with no env token.
+
+    Keychain is disabled so file-based tests stay deterministic on macOS.
+    """
     monkeypatch.delenv(claude_oauth.CLAUDE_CODE_OAUTH_TOKEN_ENV, raising=False)
     monkeypatch.delenv("CODEX_SHIM_DISABLE_CLAUDE_OAUTH", raising=False)
+    monkeypatch.setenv(claude_oauth.KEYCHAIN_DISABLE_ENV, "1")
     creds = tmp_path / ".credentials.json"
     monkeypatch.setenv(claude_oauth.CLAUDE_CREDENTIALS_ENV, str(creds))
     return creds
@@ -86,6 +90,27 @@ def test_expired_token_triggers_refresh_and_persists(monkeypatch, isolate_oauth_
 def test_missing_token_raises(isolate_oauth_env):
     with pytest.raises(claude_oauth.ClaudeOAuthError):
         claude_oauth.resolve_access_token()
+
+
+def test_keychain_used_when_file_absent(monkeypatch, isolate_oauth_env):
+    blob = {"claudeAiOauth": {"accessToken": "oat-keychain", "refreshToken": "ort", "expiresAt": (time.time() * 1000) + 3_600_000}}
+    monkeypatch.setattr(claude_oauth, "_read_keychain", lambda: blob)
+    assert claude_oauth.claude_oauth_available() is True
+    assert claude_oauth.resolve_access_token() == "oat-keychain"
+
+
+def test_keychain_refresh_persists_to_keychain(monkeypatch, isolate_oauth_env):
+    blob = {"claudeAiOauth": {"accessToken": "oat-old", "refreshToken": "ort-1", "expiresAt": 0}}
+    monkeypatch.setattr(claude_oauth, "_read_keychain", lambda: dict(blob))
+    written = {}
+    monkeypatch.setattr(claude_oauth, "_write_keychain", lambda data: written.update(data) or True)
+    monkeypatch.setattr(
+        claude_oauth,
+        "refresh_oauth",
+        lambda rt: {"accessToken": "oat-new", "refreshToken": "ort-2", "expiresAt": (time.time() * 1000) + 3_600_000},
+    )
+    assert claude_oauth.resolve_access_token() == "oat-new"
+    assert written["claudeAiOauth"]["accessToken"] == "oat-new"
 
 
 def test_oauth_model_has_credentials_via_env(monkeypatch, isolate_oauth_env, tmp_path):

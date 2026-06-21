@@ -423,10 +423,12 @@ def _doctor_claude_oauth() -> list[DoctorCheck]:
     if _env_token():
         return [DoctorCheck("Claude OAuth", "OK", f"available via {CLAUDE_CODE_OAUTH_TOKEN_ENV}")]
     creds = _credentials_path()
-    if claude_oauth_available():
+    if creds.exists() and claude_oauth_available():
         return [DoctorCheck("Claude OAuth", "OK", f"available via {creds}")]
+    if claude_oauth_available():
+        return [DoctorCheck("Claude OAuth", "OK", "available via macOS Keychain (Claude Code-credentials)")]
     detail = (
-        f"Run `claude login` (writes {creds}) or set {CLAUDE_CODE_OAUTH_TOKEN_ENV} "
+        f"Run `claude login`, `claude setup-token`, or set {CLAUDE_CODE_OAUTH_TOKEN_ENV} "
         "to use a Claude subscription for `anthropic` models with `\"auth\": \"oauth\"`."
     )
     return [DoctorCheck("Claude OAuth", "WARN", "unavailable", detail)]

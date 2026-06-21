@@ -420,16 +420,23 @@ def normalize_responses_usage(usage: Any) -> dict[str, Any] | None:
     if cache_created is not None:
         input_details.setdefault("cache_creation_input_tokens", cache_created)
 
-    if input_details:
-        normalized["input_tokens_details"] = input_details
+    # Codex's Responses deserializer requires input_tokens_details.cached_tokens.
+    input_details.setdefault("cached_tokens", 0)
+    normalized["input_tokens_details"] = input_details
 
     output_details: dict[str, Any] = {}
     if isinstance(usage.get("output_tokens_details"), dict):
         output_details.update(usage["output_tokens_details"])
     if isinstance(usage.get("completion_tokens_details"), dict):
         output_details.update(usage["completion_tokens_details"])
-    if output_details:
-        normalized["output_tokens_details"] = output_details
+
+    # Anthropic reports reasoning under `thinking_tokens`; Codex requires
+    # `reasoning_tokens` in output_tokens_details and rejects the stream without it.
+    thinking = _int_token(output_details.get("thinking_tokens"))
+    if thinking is not None:
+        output_details.setdefault("reasoning_tokens", thinking)
+    output_details.setdefault("reasoning_tokens", 0)
+    normalized["output_tokens_details"] = output_details
 
     return normalized
 
@@ -1034,10 +1041,10 @@ def _responses_usage_to_anthropic_usage(usage: dict[str, Any] | None) -> dict[st
     input_details = usage.get("input_tokens_details")
     if isinstance(input_details, dict):
         cache_read = input_details.get("cache_read_input_tokens", input_details.get("cached_tokens"))
-        if isinstance(cache_read, int) and not isinstance(cache_read, bool):
+        if isinstance(cache_read, int) and not isinstance(cache_read, bool) and cache_read:
             result["cache_read_input_tokens"] = cache_read
         cache_created = input_details.get("cache_creation_input_tokens")
-        if isinstance(cache_created, int) and not isinstance(cache_created, bool):
+        if isinstance(cache_created, int) and not isinstance(cache_created, bool) and cache_created:
             result["cache_creation_input_tokens"] = cache_created
     return result
 

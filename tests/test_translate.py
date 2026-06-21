@@ -5,9 +5,24 @@ from codex_shim.translate import (
     anthropic_to_response,
     chat_completion_to_anthropic_message,
     chat_completion_to_response,
+    normalize_responses_usage,
     responses_to_anthropic,
     responses_to_chat,
 )
+
+
+def test_normalize_usage_always_has_reasoning_and_cached_tokens():
+    out = normalize_responses_usage({"input_tokens": 7, "output_tokens": 2, "total_tokens": 9})
+    assert out["output_tokens_details"] == {"reasoning_tokens": 0}
+    assert out["input_tokens_details"] == {"cached_tokens": 0}
+
+
+def test_normalize_usage_maps_anthropic_thinking_to_reasoning_tokens():
+    out = normalize_responses_usage(
+        {"input_tokens": 7, "output_tokens": 9, "output_tokens_details": {"thinking_tokens": 4}}
+    )
+    assert out["output_tokens_details"]["reasoning_tokens"] == 4
+    assert out["output_tokens_details"]["thinking_tokens"] == 4
 
 
 def test_responses_to_chat_text_input():
@@ -473,4 +488,5 @@ def test_anthropic_to_response_normalizes_cache_usage():
             "cache_read_input_tokens": 8,
             "cache_creation_input_tokens": 2,
         },
+        "output_tokens_details": {"reasoning_tokens": 0},
     }

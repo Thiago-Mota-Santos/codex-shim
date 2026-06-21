@@ -222,7 +222,13 @@ async def test_responses_routes_to_openai_chat(tmp_path):
     assert resp.status == 200
     payload = await resp.json()
     assert payload["output"][0]["content"][0]["text"] == "hello"
-    assert payload["usage"] == {"input_tokens": 2, "output_tokens": 1, "total_tokens": 3}
+    assert payload["usage"] == {
+        "input_tokens": 2,
+        "output_tokens": 1,
+        "total_tokens": 3,
+        "input_tokens_details": {"cached_tokens": 0},
+        "output_tokens_details": {"reasoning_tokens": 0},
+    }
     assert captured["body"]["model"] == "real-openai"
     assert captured["headers"]["Authorization"] == "Bearer secret"
 
@@ -333,6 +339,7 @@ async def test_streaming_openai_chat_response_completed_includes_usage(tmp_path)
         "output_tokens": 2,
         "total_tokens": 6,
         "input_tokens_details": {"cached_tokens": 3},
+        "output_tokens_details": {"reasoning_tokens": 0},
     }
 
     await shim_client.close()
@@ -382,6 +389,7 @@ async def test_streaming_anthropic_response_completed_includes_usage():
             "cached_tokens": 4,
             "cache_read_input_tokens": 4,
         },
+        "output_tokens_details": {"reasoning_tokens": 0},
     }
 
 
@@ -439,7 +447,13 @@ async def test_responses_compact_routes_to_openai_chat_and_returns_compacted_win
     assert payload["status"] == "completed"
     assert payload["model"] == "real-openai"
     assert payload["output"][0]["content"][0]["text"] == "Task: keep implementing compact support."
-    assert payload["usage"] == {"input_tokens": 9, "output_tokens": 2, "total_tokens": 11}
+    assert payload["usage"] == {
+        "input_tokens": 9,
+        "output_tokens": 2,
+        "total_tokens": 11,
+        "input_tokens_details": {"cached_tokens": 0},
+        "output_tokens_details": {"reasoning_tokens": 0},
+    }
     assert captured["body"]["model"] == "real-openai"
     assert captured["body"]["stream"] is False
     assert "service_tier" not in captured["body"]

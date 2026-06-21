@@ -358,10 +358,48 @@ Useful model fields:
 |---|---|
 | `display_name` | Human-readable picker label. |
 | `api_key_env` | Name of an environment variable that contains the upstream API key. |
+| `auth` | Set to `oauth` on an `anthropic` model to authenticate with a Claude Pro/Max subscription instead of an API key. See [Claude subscription (OAuth)](#claude-subscription-oauth). |
 | `max_context_limit` | Catalog context window and compaction limits. |
 | `max_output_tokens` | Default max output when translating to Anthropic. |
 | `no_image_support` | When true, catalog advertises text-only input. |
 | `extra_headers` | Optional upstream headers merged into requests. |
+
+### Claude subscription (OAuth)
+
+You can route an `anthropic` model through your **Claude Pro/Max subscription**
+instead of a metered API key — the same way the ChatGPT and Cursor passthroughs
+reuse those subscriptions. Add `"auth": "oauth"` to the model and drop the
+`api_key`:
+
+```json
+{
+  "model": "claude-opus-4-8",
+  "provider": "anthropic",
+  "base_url": "https://api.anthropic.com/v1",
+  "auth": "oauth",
+  "display_name": "Claude Opus 4.8 (subscription)"
+}
+```
+
+The shim resolves a token in this order:
+
+1. `CLAUDE_CODE_OAUTH_TOKEN` — a long-lived token from `claude setup-token`.
+   Used verbatim, never refreshed.
+2. `~/.claude/.credentials.json` — written by `claude login`. Short-lived
+   access tokens (~60 min) are refreshed on demand against
+   `console.anthropic.com` and written back. Override the path with
+   `CLAUDE_CODE_CREDENTIALS`.
+
+When OAuth is active the shim sends `Authorization: Bearer …` (never
+`x-api-key`), adds the `anthropic-beta: oauth-2025-04-20` flag and a Claude Code
+`User-Agent`, and prepends the Claude Code identity system prompt — the contract
+the Anthropic API requires for subscription tokens. Verify with
+`codex-shim doctor` (look for the **Claude OAuth** check). Disable entirely with
+`CODEX_SHIM_DISABLE_CLAUDE_OAUTH=1`.
+
+> Note: as of June 15, 2026 Anthropic permits third-party agent usage on Claude
+> subscriptions (the planned separate-credit change was paused). Policy can
+> change — review Anthropic's current terms before relying on this.
 
 ### OpenCode Go
 

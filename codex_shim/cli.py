@@ -225,6 +225,7 @@ def doctor(settings_path: Path, port: int) -> int:
     checks.extend(_doctor_runtime_files())
     checks.extend(_doctor_daemon(port))
     checks.extend(_doctor_chatgpt())
+    checks.extend(_doctor_claude_oauth())
     checks.extend(_doctor_cursor())
     checks.extend(_doctor_proxy_env())
     checks.extend(_doctor_codex_config())
@@ -407,6 +408,28 @@ def _doctor_chatgpt() -> list[DoctorCheck]:
     else:
         detail = "Run `codex login` if you want ChatGPT/Codex passthrough."
     return [DoctorCheck("ChatGPT passthrough", "WARN", "unavailable", detail)]
+
+
+def _doctor_claude_oauth() -> list[DoctorCheck]:
+    from .claude_oauth import (
+        CLAUDE_CODE_OAUTH_TOKEN_ENV,
+        _credentials_path,
+        _env_token,
+        claude_oauth_available,
+    )
+
+    if _env_flag("CODEX_SHIM_DISABLE_CLAUDE_OAUTH"):
+        return [DoctorCheck("Claude OAuth", "INFO", "disabled via CODEX_SHIM_DISABLE_CLAUDE_OAUTH")]
+    if _env_token():
+        return [DoctorCheck("Claude OAuth", "OK", f"available via {CLAUDE_CODE_OAUTH_TOKEN_ENV}")]
+    creds = _credentials_path()
+    if claude_oauth_available():
+        return [DoctorCheck("Claude OAuth", "OK", f"available via {creds}")]
+    detail = (
+        f"Run `claude login` (writes {creds}) or set {CLAUDE_CODE_OAUTH_TOKEN_ENV} "
+        "to use a Claude subscription for `anthropic` models with `\"auth\": \"oauth\"`."
+    )
+    return [DoctorCheck("Claude OAuth", "WARN", "unavailable", detail)]
 
 
 def _doctor_cursor() -> list[DoctorCheck]:

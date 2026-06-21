@@ -179,12 +179,17 @@ class ShimModel:
     max_context_limit: int | None = None
     max_output_tokens: int | None = None
     no_image_support: bool = False
+    auth_mode: str = ""
     extra_headers: dict[str, str] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_anthropic(self) -> bool:
         return self.provider == "anthropic"
+
+    @property
+    def is_oauth(self) -> bool:
+        return self.is_anthropic and self.auth_mode == "oauth"
 
     @property
     def is_openai_chat(self) -> bool:
@@ -232,9 +237,12 @@ class ModelSettings:
                 for k, v in (_field(row, "extra_headers", "extraHeaders", default={}) or {}).items()
                 if v is not None
             }
+            auth_mode = str(_field(row, "auth", "auth_mode", "authMode", default="")).strip().lower()
             api_key_env = str(_field(row, "api_key_env", "apiKeyEnv", default="")).strip()
             api_key = str(_field(row, "api_key", "apiKey", default=""))
-            if api_key_env:
+            if auth_mode == "oauth":
+                api_key = ""
+            elif api_key_env:
                 api_key = os.environ.get(api_key_env, api_key).strip()
             else:
                 api_key = _resolve_api_key(api_key)
@@ -250,6 +258,7 @@ class ModelSettings:
                     max_context_limit=_int_or_none(_field(row, "max_context_limit", "maxContextLimit")),
                     max_output_tokens=_int_or_none(_field(row, "max_output_tokens", "maxOutputTokens")),
                     no_image_support=bool(_field(row, "no_image_support", "noImageSupport", default=False)),
+                    auth_mode=auth_mode,
                     extra_headers=extra_headers,
                     raw=row,
                 )
@@ -390,4 +399,8 @@ def available_model_slugs(models: list[ShimModel]) -> set[str]:
 
 
 def byok_model_has_credentials(model: ShimModel) -> bool:
+    if model.is_oauth:
+        from .claude_oauth import claude_oauth_available
+
+        return claude_oauth_available()
     return bool(model.api_key.strip())

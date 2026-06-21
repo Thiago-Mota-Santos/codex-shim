@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import re
 import secrets
@@ -23,6 +24,13 @@ from .cursor_passthrough import (
     iter_cursor_agent_events,
 )
 from . import router as router_module
+from .claude_oauth import (
+    CLAUDE_CODE_SYSTEM_PROMPT,
+    CLAUDE_CODE_USER_AGENT,
+    CLAUDE_OAUTH_BETA,
+    ClaudeOAuthError,
+    resolve_access_token,
+)
 from .hostguard import build_allowed_hosts, host_guard_middleware
 from .settings import (
     CHATGPT_MODEL_SLUG,
@@ -782,11 +790,22 @@ class ShimServer:
             payload = await upstream.json(content_type=None)
         return web.json_response(chat_completion_to_anthropic_message(payload, route.slug))
 
+    async def _claude_oauth_headers(self, route: ShimModel, body: dict[str, Any]) -> tuple[dict[str, str], dict[str, Any]]:
+        """Resolve a subscription token and shape headers + body for OAuth."""
+        try:
+            token = await asyncio.get_event_loop().run_in_executor(None, resolve_access_token)
+        except ClaudeOAuthError as exc:
+            raise web.HTTPUnauthorized(text=str(exc)) from exc
+        return _anthropic_oauth_headers(token, route), _inject_claude_code_system(body)
+
     async def _post_anthropic(
         self, request: web.Request, route: ShimModel, body: dict[str, Any], as_responses: bool
     ) -> web.StreamResponse:
         url = _join_url(route.base_url, "/messages")
-        headers = _anthropic_headers(route)
+        if route.is_oauth:
+            headers, body = await self._claude_oauth_headers(route, body)
+        else:
+            headers = _anthropic_headers(route)
         async with ClientSession(timeout=self.timeout) as session:
             upstream = await session.post(url, json=body, headers=headers)
             if upstream.status >= 400:
@@ -805,7 +824,10 @@ class ShimServer:
         self, request: web.Request, route: ShimModel, body: dict[str, Any]
     ) -> web.StreamResponse:
         url = _join_url(route.base_url, "/messages")
-        headers = _anthropic_headers(route)
+        if route.is_oauth:
+            headers, body = await self._claude_oauth_headers(route, body)
+        else:
+            headers = _anthropic_headers(route)
         async with ClientSession(timeout=self.timeout) as session:
             upstream = await session.post(url, json=body, headers=headers)
             if upstream.status >= 400:
@@ -1955,6 +1977,50 @@ def _anthropic_headers(route: ShimModel) -> dict[str, str]:
     if route.api_key:
         headers.setdefault("x-api-key", route.api_key)
     return headers
+
+
+def _merge_beta(existing: str | None, required: str) -> str:
+    values = [part.strip() for part in (existing or "").split(",") if part.strip()]
+    if required not in values:
+        values.append(required)
+    return ", ".join(values)
+
+
+def _anthropic_oauth_headers(token: str, route: ShimModel) -> dict[str, str]:
+    """Headers that make a Messages request look like Claude Code (subscription).
+
+    Uses ``Authorization: Bearer`` (never ``x-api-key``), forces the OAuth beta
+    flag, and sets a Claude Code User-Agent to avoid the throttled bucket.
+    """
+    passthrough = {k: v for k, v in route.extra_headers.items() if k.lower() not in {"x-api-key", "anthropic-beta", "authorization"}}
+    beta_override = next((v for k, v in route.extra_headers.items() if k.lower() == "anthropic-beta"), None)
+    return {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": _merge_beta(beta_override, CLAUDE_OAUTH_BETA),
+        "User-Agent": CLAUDE_CODE_USER_AGENT,
+        **passthrough,
+        "Authorization": f"Bearer {token}",
+    }
+
+
+def _inject_claude_code_system(body: dict[str, Any]) -> dict[str, Any]:
+    """Ensure the first system block is the Claude Code identity prompt.
+
+    The Anthropic API rejects subscription OAuth tokens unless the request's
+    leading system block matches Claude Code's. Returns a new body; never
+    mutates the input.
+    """
+    spoof = {"type": "text", "text": CLAUDE_CODE_SYSTEM_PROMPT}
+    system = body.get("system")
+    if isinstance(system, list):
+        first = system[0] if system else None
+        if isinstance(first, dict) and str(first.get("text") or "").startswith(CLAUDE_CODE_SYSTEM_PROMPT):
+            return body
+        return {**body, "system": [spoof, *system]}
+    if isinstance(system, str) and system.strip():
+        return {**body, "system": [spoof, {"type": "text", "text": system}]}
+    return {**body, "system": [spoof]}
 
 
 def _anthropic_text(payload: Any) -> str:
